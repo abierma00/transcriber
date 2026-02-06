@@ -5,7 +5,7 @@ import tempfile
 
 def main():
     # 1. Title and Description
-    st.title("🎙️ Spanish Audio Transcriber")
+    st.title("🎙️Audio Transcriber")
     st.write("Upload an audio file (MP3, WAV, M4A) to transcribe it into text.")
 
     # 2. File Uploader
