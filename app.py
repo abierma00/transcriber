@@ -4,22 +4,28 @@ import os
 import tempfile
 from whisper.tokenizer import LANGUAGES
 from deep_translator import GoogleTranslator
-from gtts import gTTS  # <--- NEW IMPORT
+from gtts import gTTS
 
 # --- FFmpeg Check ---
 try:
     import imageio_ffmpeg
     ffmpeg_cmd = imageio_ffmpeg.get_ffmpeg_exe()
-    print(f"FFmpeg located at: {ffmpeg_cmd}")
 except ImportError:
-    print("imageio-ffmpeg not installed. Relying on system PATH.")
+    pass
 
-# Helper: Map language codes
+# Helper 1: Map Whisper languages (for the "Source" dropdown)
 WHISPER_LANGUAGES = {v.capitalize(): k for k, v in LANGUAGES.items()}
+
+# Helper 2: Map Google Translator languages (Name -> Code)
+# We fetch this as a dictionary { 'arabic': 'ar', 'french': 'fr' ... }
+try:
+    LANG_CODES = GoogleTranslator().get_supported_languages(as_dict=True)
+except:
+    # Fallback if internet fails
+    LANG_CODES = {"english": "en", "spanish": "es", "french": "fr", "german": "de", "arabic": "ar"}
 
 def main():
     st.title("🌍 Universal Audio Transcriber & Translator")
-    st.markdown("Transcribe audio, translate it, and **hear it spoken back**.")
 
     # --- 1. Audio Settings ---
     st.subheader("1. Audio Settings")
@@ -30,18 +36,20 @@ def main():
     st.subheader("2. Translation Settings")
     enable_translation = st.checkbox("Translate the result to another language?")
     
-    target_lang_name = None
+    target_lang_code = "en" # Default to English
+    target_lang_name = "English"
+
     if enable_translation:
-        try:
-            translator_langs = GoogleTranslator().get_supported_languages()
-            translator_langs = [lang.capitalize() for lang in translator_langs]
-            target_lang_name = st.selectbox(
-                "Translate text into:",
-                translator_langs,
-                index=translator_langs.index("English") if "English" in translator_langs else 0
-            )
-        except Exception as e:
-            st.warning(f"Could not load languages from Google Translator: {e}")
+        # Create a list of Capitalized names for the dropdown
+        display_names = [name.capitalize() for name in LANG_CODES.keys()]
+        
+        target_lang_name = st.selectbox(
+            "Translate text into:",
+            display_names,
+            index=display_names.index("English") if "English" in display_names else 0
+        )
+        # Get the 2-letter code for the selected name
+        target_lang_code = LANG_CODES.get(target_lang_name.lower(), "en")
 
     # --- 3. Upload File ---
     st.subheader("3. Upload File")
@@ -69,29 +77,24 @@ def main():
                     
                     st.success("Transcription Complete!")
                     st.markdown("### 📝 Original Transcript")
-                    st.text_area("Original", original_text, height=200)
+                    st.text_area("Original", original_text, height=150)
 
                 # --- PHASE 2: TRANSLATION & AUDIO ---
-                if enable_translation and target_lang_name:
+                if enable_translation:
                     with st.spinner(f"Translating to {target_lang_name}..."):
                         # Translate
-                        target_code = target_lang_name.lower()
-                        translator = GoogleTranslator(source='auto', target=target_code)
+                        translator = GoogleTranslator(source='auto', target=target_lang_code)
                         translated_text = translator.translate(original_text)
                         
                         st.markdown(f"### 🌐 Translated Transcript ({target_lang_name})")
-                        st.text_area("Translated", translated_text, height=200)
+                        st.text_area("Translated", translated_text, height=150)
                         
-                        # --- NEW: GENERATE AUDIO ---
+                        # --- AUDIO GENERATION ---
                         st.markdown(f"### 🔊 Listen in {target_lang_name}")
                         try:
-                            # gTTS needs the language code (e.g., 'es' for Spanish, 'fr' for French)
-                            # GoogleTranslator mostly uses standard codes, but we rely on deep_translator's map if possible.
-                            # For simplicity, we use the target_code directly as gTTS understands most names too or codes.
+                            # NOW we use the correct 2-letter code (e.g., 'ar') instead of the full name
+                            tts = gTTS(text=translated_text, lang=target_lang_code)
                             
-                            tts = gTTS(text=translated_text, lang=target_code)
-                            
-                            # Save to a temporary file
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
                                 tts.save(fp.name)
                                 st.audio(fp.name, format="audio/mp3")
