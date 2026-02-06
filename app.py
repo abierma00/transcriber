@@ -4,10 +4,9 @@ import os
 import tempfile
 from whisper.tokenizer import LANGUAGES
 from deep_translator import GoogleTranslator
+from gtts import gTTS  # <--- NEW IMPORT
 
 # --- FFmpeg Check ---
-# On Streamlit Cloud, FFmpeg is installed via packages.txt, so we just check if it's there.
-# If running locally without a path set, this ensures we don't crash immediately.
 try:
     import imageio_ffmpeg
     ffmpeg_cmd = imageio_ffmpeg.get_ffmpeg_exe()
@@ -20,7 +19,7 @@ WHISPER_LANGUAGES = {v.capitalize(): k for k, v in LANGUAGES.items()}
 
 def main():
     st.title("🌍 Universal Audio Transcriber & Translator")
-    st.markdown("Transcribe audio from **any language** and translate it to **any language**.")
+    st.markdown("Transcribe audio, translate it, and **hear it spoken back**.")
 
     # --- 1. Audio Settings ---
     st.subheader("1. Audio Settings")
@@ -58,7 +57,6 @@ def main():
             try:
                 # --- PHASE 1: TRANSCRIPTION ---
                 with st.spinner("Loading AI Model (Whisper)..."):
-                    # Use 'base' model. If it crashes on Cloud (Out of Memory), change to 'tiny'
                     model = whisper.load_model("base")
 
                 with st.spinner("Transcribing audio..."):
@@ -72,29 +70,34 @@ def main():
                     st.success("Transcription Complete!")
                     st.markdown("### 📝 Original Transcript")
                     st.text_area("Original", original_text, height=200)
-                    
-                    st.download_button(
-                        label="Download Original",
-                        data=original_text,
-                        file_name="transcript_original.txt",
-                        mime="text/plain"
-                    )
 
-                # --- PHASE 2: TRANSLATION ---
+                # --- PHASE 2: TRANSLATION & AUDIO ---
                 if enable_translation and target_lang_name:
                     with st.spinner(f"Translating to {target_lang_name}..."):
-                        translator = GoogleTranslator(source='auto', target=target_lang_name.lower())
+                        # Translate
+                        target_code = target_lang_name.lower()
+                        translator = GoogleTranslator(source='auto', target=target_code)
                         translated_text = translator.translate(original_text)
                         
                         st.markdown(f"### 🌐 Translated Transcript ({target_lang_name})")
                         st.text_area("Translated", translated_text, height=200)
                         
-                        st.download_button(
-                            label=f"Download {target_lang_name} Translation",
-                            data=translated_text,
-                            file_name=f"transcript_{target_lang_name}.txt",
-                            mime="text/plain"
-                        )
+                        # --- NEW: GENERATE AUDIO ---
+                        st.markdown(f"### 🔊 Listen in {target_lang_name}")
+                        try:
+                            # gTTS needs the language code (e.g., 'es' for Spanish, 'fr' for French)
+                            # GoogleTranslator mostly uses standard codes, but we rely on deep_translator's map if possible.
+                            # For simplicity, we use the target_code directly as gTTS understands most names too or codes.
+                            
+                            tts = gTTS(text=translated_text, lang=target_code)
+                            
+                            # Save to a temporary file
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+                                tts.save(fp.name)
+                                st.audio(fp.name, format="audio/mp3")
+                                
+                        except Exception as e:
+                            st.error(f"Could not generate audio: {e}")
 
             except Exception as e:
                 st.error(f"An error occurred: {e}")
